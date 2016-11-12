@@ -99,10 +99,10 @@ class Device:
         x = str(int(round(    x * 10, 0)))
         y = str(int(round(    y * 10, 0)))
         z = str(int(round(    z * 10, 0)))
-        v = str(int(round(speed * 10, 0)))
+        f = str(int(round(speed * 10, 0)))
 
         # Create the command
-        cmnd = "sMovX" + x + "Y" + y + "Z" + z + "V" + v
+        cmnd = "G0 X{} Y{} Z{} F{}".format(x,y,z,f)
 
         # Send the command and receive a response
         self.__sendAndRecieve(cmnd)
@@ -120,7 +120,7 @@ class Device:
         a = str(float(round(angle, 3)))
 
         # Create the command
-        cmnd = "sSerN" + s + "V" + a
+        cmnd = "G202 N{} V{}".format(s,a)
 
         # Send the command and receive a response
         self.__sendAndRecieve(cmnd)
@@ -135,7 +135,7 @@ class Device:
         v = str(int(onOff))
 
         # Create the command
-        cmnd = "sPumV" + v
+        cmnd = "M231 V{}".format(v)
 
         # Send the command and receive a response
         self.__sendAndRecieve(cmnd)
@@ -149,7 +149,7 @@ class Device:
         v = str(int(onOff))
 
         # Create the command
-        cmnd = "sGriV" + v
+        cmnd = "M232 V{}".format(v)
 
         # Send the command and receive a response
         self.__sendAndRecieve(cmnd)
@@ -165,7 +165,7 @@ class Device:
         s = str(int(servo))
 
         # Create the command
-        cmnd = "sAttN" + s
+        cmnd = "M201 N{}".format(s)
 
         # Send the command and receive a response
         self.__sendAndRecieve(cmnd)
@@ -180,7 +180,7 @@ class Device:
         s = str(int(servo))
 
         # Create the command
-        cmnd = "sDetN" + s
+        cmnd = "M202 N{}".format(s)
 
         # Send the command and receive a response
         self.__sendAndRecieve(cmnd)
@@ -197,7 +197,7 @@ class Device:
         d = str(float(duration))
 
         # Create the command
-        cmnd = "sBuzF" + f + "T" + d
+        cmnd = "M210 F{} T{}".format(f,d)
 
         # Send the command and receive a response
         self.__sendAndRecieve(cmnd)
@@ -208,7 +208,7 @@ class Device:
         """
 
         # Create the command
-        cmnd = "sStp"
+        cmnd = "G203"
 
         # Send the command and recieve a response
         self.__sendAndRecieve(cmnd)
@@ -227,7 +227,7 @@ class Device:
         """
 
         # Send the command and receive a response
-        response  = self.__sendAndRecieve("gMov")
+        response  = self.__sendAndRecieve("M200")
 
         # Create the return
         ret = (False, True)["S" in response]
@@ -243,7 +243,7 @@ class Device:
         """
 
         # Send the command and receive a response
-        response = self.__sendAndRecieve("gCrd")
+        response = self.__sendAndRecieve("P220")
 
         # Parse the response
         parsedArgs = self.__parseArgs(response, "S", ["X", "Y", "Z"])
@@ -263,7 +263,7 @@ class Device:
         """
 
         # Send the command and receive a response
-        response = self.__sendAndRecieve("gAng")
+        response = self.__sendAndRecieve("P200")
 
         # Parse the response
         parsedArgs = self.__parseArgs(response, "S", ["B", "L", "R", "H"])
@@ -309,7 +309,7 @@ class Device:
         z = str(round(z * 10, 0))
 
         # Create the command
-        cmnd = "gIKX" + x + "Y" + y + "Z" + z
+        cmnd = "M220 X{} Y{} Z{}".format(x,y,z)
 
         # Send the command and receive a response
         response = self.__sendAndRecieve(cmnd)
@@ -339,7 +339,7 @@ class Device:
         s3 = str(round(servo2, 2))
 
         # Create the command
-        cmnd = "gFKT" + s1 + "L" + s2 + "R" + s3
+        cmnd = "M221 B{} L{} R{}".format(s1,s2,s3)
 
         # Send the command and receive a response
         response = self.__sendAndRecieve(cmnd)
@@ -367,7 +367,7 @@ class Device:
                 if self.is_ready():
                     break
             self.__isConnected = True
-            self.__sendAndRecieve("gVer", timeout=1)  # Send a handshake to verify that the robot is indeed connected
+            self.__sendAndRecieve("P202", timeout=1)  # Send a handshake to verify that the robot is indeed connected
 
 
         except Exception as e:
@@ -378,8 +378,8 @@ class Device:
             self.errors.append(type(e).__name__ + " " + str(e))
 
     def is_ready(self):
-        if self.__serial.readline().startswith(b"[READY]"):
-            printf("connected...")
+        if self.__serial.readline().startswith(b"@1"):
+            printf("Communication| Connected...")
             return True
         else:
             return False
@@ -396,9 +396,9 @@ class Device:
         if not self.connected():
             printf("Communication| Tried to send a command while robot was not connected!")
             return ""
-
+        # cmnd =  # for message ID
         # Prepare and send the command to the robot
-        cmndString = bytes("[" + cmnd + "]", encoding='ascii')  #  "[" + cmnd + "]"
+        cmndString = bytes("#1 " + cmnd + "\n", encoding='ascii')  #  "[" + cmnd + "]"
 
 
         try:
@@ -410,38 +410,39 @@ class Device:
 
 
         # Read the response from the robot (THERE MUST ALWAYS BE A RESPONSE!)
-        response = ""
-        startTime = time()
-        while True:
-            if timeout is not None and time() - startTime > timeout:
-                raise Exception("Robot Not Responding")
+        response = str(self.__serial.readline(), encoding='ascii')
+        response = response.replace('\n','')
+        # startTime = time()
+        # while True:
+        #     if timeout is not None and time() - startTime > timeout:
+        #         raise Exception("Robot Not Responding")
+        #
+        #     try:
+        #         response += str(self.__serial.read(), 'ascii')
+        #         # response = response.replace(' ', '')
+        #
+        #     except serial.serialutil.SerialException as e:
+        #         printf("Communication| ERROR ", e, "while sending command ", cmnd, ". Disconnecting Serial!")
+        #         self.__isConnected = False
+        #         return ""
 
-            try:
-                response += str(self.__serial.read(), 'ascii')
-                response = response.replace(' ', '')
-
-            except serial.serialutil.SerialException as e:
-                printf("Communication| ERROR ", e, "while sending command ", cmnd, ". Disconnecting Serial!")
-                self.__isConnected = False
-                return ""
-
-            if "[" in response and "]" in response:
-                response = str(response.replace("\n", ""))
-                response = str(response.replace("\r", ""))
-                break
+            # if "[" in response and "]" in response:
+            #     response = str(response.replace("\n", ""))
+            #     response = str(response.replace("\r", ""))
+            #     break
 
 
 
-        printf("Communication| ", "[" + cmnd + "]" + " " * (30 - len(cmnd)) + response)
+        printf("Communication| ", cmnd + " " * (30 - len(cmnd)) + response)
 
 
         # Clean up the response
-        response = response.replace("[", "")
-        response = response.replace("]", "")
+        # response = response.replace("[", "")
+        # response = response.replace("]", "")
 
 
         # If the robot returned an error, print that out
-        if "error" in response:
+        if "E20" or "E21" in response:
             printf("Communication| ERROR: received error from robot: ", response)
 
 
