@@ -12,51 +12,55 @@ from Logic.Vision import PlaneTracker
 from Logic.Vision       import Vision
 
 from PyQt5              import QtCore, QtWidgets, QtGui
+import threading
 
 cascadePath  = "../Resources"
 
 
 def startCalibration(vision, trackable, robot):
-       #---------------------------------------------------------------------------------
-       #startCalibration
-       #Start tracking the robots marker
+    #---------------------------------------------------------------------------------
+    #startCalibration
+    #Start tracking the robots marker
 
-       rbMarker = trackable
+    rbMarker = trackable
 
-       vision.endAllTrackers()
-       vision.addTarget(rbMarker)
+    vision.endAllTrackers()
+    vision.addTarget(rbMarker)
 
-       # Set the robot to the home position, set the speed, and other things for the calibration
-       robot.setActiveServos(all=True)
-       robot.setSpeed(10)
+    # Set the robot to the home position, set the speed, and other things for the calibration
+    robot.setActiveServos(all=True)
+    robot.setSpeed(10)
 
-       # Move the robot up a certain offset from the ground coordinate
-       zLower = float(round(groundCoords[2] + 2.0, 2))
-       robot.setPos(x=robot.home["x"], y=robot.home["y"], z=zLower)
-       sleep(1)
-
-
-       # Generate a large set of points to test the robot, and put them in testCoords
-       testCoords    = []
-
-       # Test the z on 3 xy points
-       zTest = int(round(zLower, 0))  # Since range requires an integer, round zLower just for this case
-       for x in range(  -20, 20, 4): testCoords += [[x,  15,    11]]  # Center of XYZ grid
-       for y in range(    8, 24, 4): testCoords += [[ 0,  y,    11]]
-       for z in range(zTest, 19, 1): testCoords += [[ 0, 15,     z]]
-
-       for x in range(  -20, 20, 4): testCoords += [[x,  15,    17]]  # Center of XY, top z
-       for y in range(   12, 24, 4): testCoords += [[ 0,  y,    17]]
+    # Move the robot up a certain offset from the ground coordinate
+    zLower = float(round(groundCoords[2] + 2.0, 2))
+    robot.setPos(x=robot.home["x"], y=robot.home["y"], z=zLower)
+    sleep(1)
 
 
+    # Generate a large set of points to test the robot, and put them in testCoords
+    testCoords    = []
 
-       direction  = int(1)
-       for y in range(12, 25, 2):
-           for x in range(-20 * direction, 20 * direction, 2 * direction):
-               testCoords += [[x, y, zTest]]
-           direction *= -1
-       print(testCoords)
-       return testCoords
+    # Test the z on 3 xy points
+    zTest = int(round(zLower, 0))  # Since range requires an integer, round zLower just for this case
+    for x in range(  -20, 20, 4): testCoords += [[x,  15,    11]]  # Center of XYZ grid
+    for y in range(    8, 24, 4): testCoords += [[ 0,  y,    11]]
+    for z in range(zTest, 19, 1): testCoords += [[ 0, 15,     z]]
+
+    for x in range(  -20, 20, 4): testCoords += [[x,  15,    17]]  # Center of XY, top z
+    for y in range(   12, 24, 4): testCoords += [[ 0,  y,    17]]
+
+
+
+    direction  = int(1)
+    for y in range(12, 25, 2):
+        for x in range(-20 * direction, 20 * direction, 2 * direction):
+            testCoords += [[x, y, zTest]]
+        direction *= -1
+    print(testCoords)
+    timer = threading.Timer(1, getPoint, [robot, vision, trackable, 0, [], {"ptPairs": [], "failPts": []}, testCoords])
+    timer.start()
+
+
 
 def endCalibration(robot, vision, errors, newCalibrations, testCoords):
 
@@ -66,12 +70,23 @@ def endCalibration(robot, vision, errors, newCalibrations, testCoords):
 
     print(len(newCalibrations["ptPairs"]))
 
-def getPoint(robot, vision, rbMarker, currentPoint, errors, newCalibrations, coord):
+def getPoint(robot, vision, rbMarker, currentPoint, errors, newCalibrations, testCoords):
     # Here we update the GUI element for telling the user how many valid points have been tested, and progress
     successCount = len(newCalibrations["ptPairs"])
     recFailCount = len(newCalibrations["failPts"])
 
     # Get variables that will be used
+
+    # timer = threading.Timer(1, getPoint, [robot, vision, trackable, currentPoint, errors, newCalibrations, testCoords])
+
+    if currentPoint >= len(testCoords):
+        endCalibration(robot, vision, rbMarker, errors, newCalibrations, testCoords)
+        return
+
+    coord = testCoords[currentPoint]
+    currentPoint += 1
+    print(currentPoint)
+
     print("GUI| Testing point ", coord)
 
     # Move the robot to the coordinate
@@ -85,10 +100,14 @@ def getPoint(robot, vision, rbMarker, currentPoint, errors, newCalibrations, coo
         print("GUI| Marker was not recognized.")
         newCalibrations['failPts'].append(coord)
         print('heihei', newCalibrations)
+        timer = threading.Timer(1, getPoint, [robot, vision, trackable, currentPoint, errors, newCalibrations, testCoords])
+        timer.start()
         return
 
     newCalibrations["ptPairs"].append([marker.center, coord])
-    timer = singleShot()
+    timer = threading.Timer(1, getPoint, [robot, vision, trackable, currentPoint, errors, newCalibrations, testCoords])
+    timer.start()
+
 
 #---------------------------------------------------------------------------------------------
 # Create a VideoStream and start a video-retrieval thread
@@ -104,7 +123,9 @@ vision = Vision(vStream, cascadePath)  # Performs computer vision tasks, using i
 
 #page2
 robot = Robot.Robot()
-robot.setUArm('/dev/ttyUSB0')
+robot.setUArm(0)
+# robot.setUArm('/dev/ttyUSB0')
+robot.setUArm('/dev/tty.usbserial-AI04HYRV')
 #wait for getCoords can get value
 coord = robot.getCoords();
 robot.setActiveServos(servo0=False)
@@ -112,8 +133,8 @@ robot.setActiveServos(servo0=False)
 key = None
 while coord ==[0, 0, 0]:
     coord = robot.getCoords()
-    print(coord)
 
+print(coord)
 input("Press Enter to continue...")
 
 robot.setActiveServos(all=False)
@@ -152,18 +173,9 @@ while not key == ord("q"):
             vision.addTarget(trackable)
             step = 0
 
-
+            timer = threading.Timer(1, startCalibration, [vision, trackable, robot])
+            timer.start()
             # Begin testing every coordinate in the testCoords array, and recording the results into newCalibrations
-
-    testCoords = startCalibration(vision, trackable, robot)
-
-    getPoint(robot, vision, trackable, currentPoint, [], {"ptPairs": [], "failPts": []}, coord)
-
-    if currentPoint >= len(testCoords):
-        endCalibration(robot, vision, rbMark, errors, newCalibrations, testCoords)
-    coord = testCoords[currentPoint]
-    currentPoint += 1
-    print(currentPoint)
 
     cv2.imshow("frame", frame)
     key = cv2.waitKey(10)
